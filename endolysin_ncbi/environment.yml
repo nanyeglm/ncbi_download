@@ -1,0 +1,43 @@
+name: endolysin
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # Python环境
+  - python=3.9
+  
+  # 生物信息学核心包
+  - biopython>=1.79
+  
+  # 数据处理和分析
+  - pandas>=1.3.0
+  - numpy>=1.21.0
+  
+  # 网络请求和数据处理
+  - requests>=2.25.0
+  - urllib3>=1.26.0
+  
+  # 文件处理
+  - openpyxl>=3.0.0
+  - xlsxwriter>=3.0.0
+  
+  # 开发和测试工具
+  - pytest>=6.0.0
+  - pytest-cov>=2.12.0
+  - black>=21.0.0
+  - flake8>=3.9.0
+  
+  # Jupyter环境（可选，用于数据分析）
+  - jupyter>=1.0.0
+  - ipykernel>=6.0.0
+  
+  # 其他有用的工具
+  - tqdm>=4.60.0  # 进度条
+  - click>=8.0.0  # 命令行工具
+  
+  # pip安装的包
+  - pip
+  - pip:
+    - bio>=1.3.0
+    - xmltodict>=0.12.0

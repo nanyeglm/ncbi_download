@@ -2,6 +2,8 @@ from Bio import Entrez, SeqIO
 import os
 import time
 from datetime import datetime
+from pathlib import Path
+from endolysin_ncbi.config.settings import PROJECT_ROOT
 
 # 1. 设置基本参数（必须包含 email）
 Entrez.email = "nanyecpu@163.com"
@@ -12,10 +14,9 @@ MAX_RECORDS_PER_DATABASE = 500000  # 每个数据库最大下载记录数（可�
 BATCH_SIZE = 50                  # 每批下载的记录数
 DOWNLOAD_DELAY = 1.0             # 下载间隔（秒），避免过于频繁请求
 
-# 创建输出目录
-output_dir = "endolysin_data"
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+# 创建输出目录（基于项目根目录）
+output_dir = PROJECT_ROOT / "endolysin_data"
+output_dir.mkdir(parents=True, exist_ok=True)
 
 print(f"开始检索 NCBI 所有数据库中的 endolysin 相关数据...")
 print(f"数据将保存到: {output_dir}")
