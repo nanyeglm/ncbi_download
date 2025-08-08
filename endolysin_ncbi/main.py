@@ -198,6 +198,8 @@ def main():
     parser.add_argument('--database', help='只处理指定的数据库')
     parser.add_argument('--output-dir', default=str(OUTPUT_DIR),
                        help=f'指定输出目录 (默认: {OUTPUT_DIR})')
+    parser.add_argument('--retry-batches', nargs='*', type=int,
+                       help='仅重试指定批次号（例如: --retry-batches 789 790 861）')
     
     args = parser.parse_args()
     
@@ -211,7 +213,26 @@ def main():
     print("=" * 60)
     
     try:
-        if args.database:
+        if args.retry_batches is not None:
+            # 仅重试指定批次（需要指定数据库）
+            if not args.database:
+                raise ValueError('使用 --retry-batches 时，必须同时指定 --database')
+            dm = DatabaseManager()
+            count, webenv, query_key = dm.search_database(args.database)
+            if count > 0 and webenv and query_key:
+                # 通过对应类别下载器来调用 retry
+                # 选择器：从各 downloader 中找支持该数据库的实例
+                for downloader in manager.downloaders.values():
+                    if downloader.is_supported(args.database):
+                        repaired = downloader.data_downloader.retry_failed_batches(
+                            args.database, webenv, query_key, args.retry_batches
+                        )
+                        print(f"已补回 {repaired} 个记录文件。")
+                        break
+            else:
+                print('无法获取有效的会话信息（webenv/query_key），重试终止。')
+
+        elif args.database:
             # 处理单个数据库
             print(f"处理单个数据库: {args.database}")
             result = manager.process_single_database(args.database, not args.preview_only)

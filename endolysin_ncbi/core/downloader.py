@@ -6,7 +6,8 @@
 from pathlib import Path
 import time
 from datetime import datetime
-from typing import List, Dict, Any
+import re
+from typing import List, Dict, Any, Optional
 from endolysin_ncbi.core.database_manager import DatabaseManager
 from endolysin_ncbi.config.settings import (
     BATCH_SIZE,
@@ -215,3 +216,91 @@ class DataDownloader:
             f.write("\n# 统计信息生成完成\n")
         
         print(f"    - 统计信息已保存: {stats_file}")
+
+    def retry_failed_batches(
+        self,
+        database: str,
+        webenv: str,
+        query_key: str,
+        specific_batches: Optional[List[int]] = None,
+    ) -> int:
+        """重试指定数据库下的失败批次，仅重新抓取错误批次对应的记录范围。
+
+        参数:
+            database: 数据库名（如 'protein'）
+            webenv, query_key: 来自 esearch 的会话信息
+            specific_batches: 指定批次号列表；为 None 则重试目录中所有 error_batch_*.txt
+
+        返回:
+            成功补回的记录文件数
+        """
+        rettype, retmode = get_download_format(database)
+        file_extension = get_file_extension(rettype, retmode)
+
+        database_dir = Path(create_database_directory(self.output_dir, database))
+        error_files = sorted(database_dir.glob("error_batch_*.txt"))
+
+        if specific_batches:
+            error_files = [
+                f for f in error_files
+                if any(re.search(rf"error_batch_{b}\\.txt$", f.name) for b in specific_batches)
+            ]
+
+        if not error_files:
+            print(f"未发现需要重试的错误批次文件。目录: {database_dir}")
+            return 0
+
+        total_saved = 0
+        for err in error_files:
+            try:
+                text = err.read_text(encoding="utf-8", errors="ignore")
+                m = re.search(r"记录范围:\s*(\d+)-(\d+)", text)
+                if not m:
+                    print(f"跳过无法解析记录范围的错误文件: {err.name}")
+                    continue
+
+                first, last = int(m.group(1)), int(m.group(2))
+                retstart = first - 1
+                retmax = last - first + 1
+
+                print(f"重试批次: {err.name} → 记录 {first}-{last} (retstart={retstart}, retmax={retmax})")
+
+                # 获取数据
+                data = self.db_manager.fetch_records(
+                    database, rettype, retmode, retstart, retmax, webenv, query_key
+                )
+
+                # 解析与保存
+                records = self._parse_records(data, database, rettype, retmode)
+                record_counter = 0
+                saved_in_batch = 0
+                for record in records:
+                    if record.strip():
+                        record_counter += 1
+                        # 用 batch 内相对序号近似命名，extract_record_id 更稳健
+                        record_id = extract_record_id(record, database, rettype, record_counter)
+                        filename = f"{record_id}.{file_extension}"
+                        safe_filename = generate_safe_filename(filename)
+                        safe_filepath = database_dir / safe_filename
+                        file_size = save_record_file(
+                            safe_filepath, record, database, record_id, rettype, retmode
+                        )
+                        if file_size > 0:
+                            total_saved += 1
+                            saved_in_batch += 1
+
+                # 若本次成功写入，删除错误文件
+                if saved_in_batch > 0:
+                    try:
+                        err.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
+                time.sleep(DOWNLOAD_DELAY)
+
+            except Exception as e:
+                print(f"重试失败: {err.name} → {e}")
+                continue
+
+        print(f"重试完成，成功补回 {total_saved} 个记录文件。")
+        return total_saved
