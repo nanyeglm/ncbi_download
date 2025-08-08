@@ -12,6 +12,7 @@ PROJECT_ROOT: Path = Path(__file__).resolve().parents[2]
 # NCBI API配置
 NCBI_EMAIL = os.getenv("ENDOLYSIN_NCBI_EMAIL", "nanyecpu@163.com")
 NCBI_TOOL = os.getenv("ENDOLYSIN_NCBI_TOOL", "endolysin_search_script")
+NCBI_API_KEY = os.getenv("ENDOLYSIN_NCBI_API_KEY", "")
 
 # 下载配置（可通过环境变量覆盖）
 MAX_RECORDS_PER_DATABASE = int(os.getenv("ENDOLYSIN_MAX_RECORDS_PER_DATABASE", "500000"))
@@ -24,6 +25,11 @@ SEARCH_TERM = os.getenv("ENDOLYSIN_SEARCH_TERM", "endolysin")
 
 # 输出配置（基于工作区根目录）
 OUTPUT_DIR: Path = PROJECT_ROOT / os.getenv("ENDOLYSIN_OUTPUT_DIR", "endolysin_data")
+
+# 重试与退避策略（用于请求失败的自恢复）
+MAX_RETRIES = int(os.getenv("ENDOLYSIN_MAX_RETRIES", "5"))
+RETRY_BACKOFF_BASE = float(os.getenv("ENDOLYSIN_RETRY_BACKOFF_BASE", "2.0"))
+RETRY_JITTER_MAX = float(os.getenv("ENDOLYSIN_RETRY_JITTER_MAX", "0.5"))
 
 # 数据库格式映射配置
 DATABASE_FORMATS = {

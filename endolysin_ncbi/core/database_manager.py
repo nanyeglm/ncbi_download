@@ -5,8 +5,17 @@
 
 from Bio import Entrez
 import time
-from typing import List, Tuple, Dict, Any
-from endolysin_ncbi.config.settings import NCBI_EMAIL, NCBI_TOOL, SEARCH_TERM
+import random
+from typing import List, Tuple, Dict, Any, Callable
+from endolysin_ncbi.config.settings import (
+    NCBI_EMAIL,
+    NCBI_TOOL,
+    NCBI_API_KEY,
+    SEARCH_TERM,
+    MAX_RETRIES,
+    RETRY_BACKOFF_BASE,
+    RETRY_JITTER_MAX,
+)
 
 
 class DatabaseManager:
@@ -16,11 +25,28 @@ class DatabaseManager:
         """初始化数据库管理器"""
         Entrez.email = NCBI_EMAIL
         Entrez.tool = NCBI_TOOL
+        if NCBI_API_KEY:
+            Entrez.api_key = NCBI_API_KEY
+
+    def _with_retries(self, func: Callable, *args, **kwargs):
+        """带重试与指数退避的调用包装。对 429/5xx 等错误重试，加入抖动。"""
+        attempt = 0
+        while True:
+            try:
+                return func(*args, **kwargs)
+            except Exception as exc:  # 网络/限流/服务端错误
+                attempt += 1
+                if attempt > MAX_RETRIES:
+                    raise
+                sleep_seconds = (RETRY_BACKOFF_BASE ** (attempt - 1))
+                # 抖动，避免雪崩与同步重试
+                sleep_seconds += random.uniform(0, RETRY_JITTER_MAX)
+                time.sleep(sleep_seconds)
     
     def get_available_databases(self) -> List[str]:
         """获取 NCBI 所有可用数据库列表"""
         try:
-            info_handle = Entrez.einfo()
+            info_handle = self._with_retries(Entrez.einfo)
             info_results = Entrez.read(info_handle)
             info_handle.close()
             return info_results["DbList"]
@@ -31,7 +57,8 @@ class DatabaseManager:
     def search_database(self, database: str, search_term: str = SEARCH_TERM) -> Tuple[int, str, str]:
         """在指定数据库中搜索关键词"""
         try:
-            search_handle = Entrez.esearch(
+            search_handle = self._with_retries(
+                Entrez.esearch,
                 db=database,
                 term=search_term,
                 usehistory="y",
@@ -53,7 +80,8 @@ class DatabaseManager:
                       max_records: int = 10000) -> List[str]:
         """获取记录ID列表"""
         try:
-            search_handle = Entrez.esearch(
+            search_handle = self._with_retries(
+                Entrez.esearch,
                 db=database,
                 term=search_term,
                 usehistory="y",
@@ -73,7 +101,8 @@ class DatabaseManager:
             return []
         
         try:
-            summary_handle = Entrez.esummary(
+            summary_handle = self._with_retries(
+                Entrez.esummary,
                 db=database,
                 id=','.join(id_list)
             )
@@ -110,7 +139,8 @@ class DatabaseManager:
                      start: int, batch_size: int, webenv: str, query_key: str) -> str:
         """从NCBI获取记录数据"""
         try:
-            fetch_handle = Entrez.efetch(
+            fetch_handle = self._with_retries(
+                Entrez.efetch,
                 db=database,
                 rettype=rettype,
                 retmode=retmode,
